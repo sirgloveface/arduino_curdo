@@ -44,7 +44,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     messageTemp += (char)payload[i];
   }
   Serial.println();
-  if (String(topic) == "home/sb" || String(topic) == "home/sb/up"  || String(topic) == "home/sb/down") {
+  if (String(topic) == "home/sb/t" || String(topic) == "home/sb/up/t"  || String(topic) == "home/sb/down/t") {
     Serial.print("Changing output to ");
     if(messageTemp == "On")
       relayTempstate = HIGH;    
@@ -59,11 +59,15 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void compute() {
     if((float)t > (float)temp ) { 
-       relayTempstate = HIGH;
+       // Apaga relay de generacion de calor y deberia mantener la temperatura seteada
+       Serial.print("Changing output to OFF");
+       relayTempstate = LOW;
        digitalWrite(tempRelay, relayTempstate);
     }
     else {
-       relayTempstate = LOW;
+       // Prende relay de generacion de calor y para intentar mantener la temperatura seteada
+       Serial.print("Changing output to ON");
+       relayTempstate = HIGH;
        digitalWrite(tempRelay, relayTempstate);
     }
 }
@@ -79,9 +83,9 @@ void reconnect() {
       client.subscribe("agent/connected");
       client.subscribe("agent/message");
       client.subscribe("agent/disconnected");
-      client.subscribe("home/sb");
-      client.subscribe("home/sb/up");
-      client.subscribe("home/sb/down");      
+      client.subscribe("home/sb/t");
+      client.subscribe("home/sb/up/t");
+      client.subscribe("home/sb/down/t");      
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -110,7 +114,9 @@ void setup()
   myPID.SetOutputLimits(0, 10000);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
-
+  client.subscribe("home/sb/t");
+  client.subscribe("home/sb/up/t");
+  client.subscribe("home/sb/down/t"); 
   
 }
 
@@ -130,8 +136,8 @@ void loop()
 void sendData(){
    Serial.println("Collecting temperature data.");
    int chk = DHT.read22(DHT22_PIN);
-   float h = DHT.humidity;  //Stores humidity value
-   float t = DHT.temperature; //Stores temperature value
+   h = DHT.humidity;  //Stores humidity value
+   t = DHT.temperature; //Stores temperature value
    if (isnan(h) || isnan(t)) {
     Serial.println("DHT sensor fallo en la lectura!");
      return;
@@ -143,15 +149,12 @@ void sendData(){
    Serial.print(t);
    Serial.println(" Celsius");
    compute(); 
-   String temp = String(t);
-   String hum = String(h);
    // Prepare a JSON payload string
-   String payload = "{\"agent\":{\"uuid\":\"ard\"},\"metrics\":[{\"type\":\"temp\",\"value\":" + temp + "}, {\"type\":\"hum\",\"value\":" + hum + "}]}";
+   String payload = "{\"temp\" :" + String(t) + ", \"hum\" : " + String(h) + ", \"ret\": " + (relayTempstate ? "true" : "false") + ", \"ts\":" + String(temp) + "}";
    // Send payload
    char attributes[108];
    payload.toCharArray( attributes, 108 );
    client.publish("home/nb/temp", attributes);
-   client.publish("home/nb/relaytemp", relayTempstate ? "true" : "false");
    Serial.println(attributes);
 }
 
