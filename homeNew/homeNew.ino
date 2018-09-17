@@ -10,8 +10,9 @@
 
 dht DHT;
 //Constants
-#define DHT22_PIN 2     // DHT 22  (AM2302) - what pin we're connected to
-#define tempRelay 4
+#define DHT22_PIN 2     // DHT22 what pin we're connected to
+#define tempRelay 4     // Relay Temperature connect to
+#define fanRelay 5      // Relay Temperature connect to
 // Update these with values suitable for your network.
 byte mac[] = {  0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0xED };
 IPAddress ip(192, 168, 1, 151);
@@ -21,17 +22,28 @@ EthernetClient ethClient;
 PubSubClient client(ethClient);
 unsigned long lastSend;
 
-float temp = 25.00;
+float temp = 22.00;
 bool relayTempstate = LOW;
+bool relayFanState = LOW;
 float h = 50.00;
-float t = 25.00;
+float t = 21.00;
+
+//Medir luz
+const long A = 1000;     //Resistencia en oscuridad en KΩ
+const int B = 15;        //Resistencia a la luz (10 Lux) en KΩ
+const int Rc = 10;       //Resistencia calibracion en KΩ
+const int LDRPin = A0; 
+int V;
+int ilum;
 
 //Define Variables we'll be connecting to
 double Setpoint, Input, Output;
 
 //Specify the links and initial tuning parameters
-double Kp=5, Ki=3, Kd=3;
+double Kp=2, Ki=5, Kd=1;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
+int WindowSize = 5000;
+unsigned long windowStartTime;
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived on topic: ");
@@ -54,21 +66,45 @@ void callback(char* topic, byte* payload, unsigned int length) {
        temp += messageTemp.toFloat();  
     Serial.println(temp);
   }
-  compute();
+  sendData();
 }
 
 void compute() {
-    if((float)t > (float)temp ) { 
+    /*if((float)t > (float)temp ) { 
        // Apaga relay de generacion de calor y deberia mantener la temperatura seteada
        Serial.print("Changing output to OFF");
        relayTempstate = LOW;
+       //relayFanState = HIGH;
        digitalWrite(tempRelay, relayTempstate);
+       //digitalWrite(fanRelay, relayFanState);
     }
     else {
        // Prende relay de generacion de calor y para intentar mantener la temperatura seteada
        Serial.print("Changing output to ON");
        relayTempstate = HIGH;
+       //relayFanState = LOW;
        digitalWrite(tempRelay, relayTempstate);
+       //digitalWrite(fanRelay, relayFanState);
+    }*/
+    Input = t;
+    myPID.Compute();
+    Serial.print(Output);
+    Serial.print("\n");
+    /************************************************
+     turn the output pin on/off based on pid output
+    ************************************************/
+    unsigned long now = millis();
+    if (now - windowStartTime > WindowSize)
+    { //time to shift the Relay Window
+      windowStartTime += WindowSize;
+    }
+    if (Output > now - windowStartTime) {
+      relayTempstate = HIGH;
+      digitalWrite(tempRelay, relayTempstate);  
+    }
+    else {
+      relayTempstate = LOW;
+      digitalWrite(tempRelay, relayTempstate);
     }
 }
 
@@ -99,6 +135,7 @@ void reconnect() {
 void setup()
 {   
   pinMode(tempRelay, OUTPUT);
+ // pinMode(fanRelay, OUTPUT);
   Serial.begin(9600);
   client.setServer("35.184.80.23", 1883);
   //client.setServer("192.168.1.101", 1883);
@@ -108,10 +145,11 @@ void setup()
   delay(1500);
   Serial.println(Ethernet.localIP());
   lastSend = millis();
+  windowStartTime = millis();
   //initialize the variables we're linked to
-  Setpoint = 68;
+  Setpoint = 21.00;
   //tell the PID to range between 0 and the full window size
-  myPID.SetOutputLimits(0, 10000);
+  myPID.SetOutputLimits(0, WindowSize);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
   client.subscribe("home/sb/t");
@@ -122,6 +160,7 @@ void setup()
 
 void loop()
 {
+  compute(); 
   if (!client.connected()) {
     reconnect();
   }
@@ -148,14 +187,32 @@ void sendData(){
    Serial.print(" %, Temp: ");
    Serial.print(t);
    Serial.println(" Celsius");
+   readLight();
    compute(); 
    // Prepare a JSON payload string
-   String payload = "{\"temp\" :" + String(t) + ", \"hum\" : " + String(h) + ", \"ret\": " + (relayTempstate ? "true" : "false") + ", \"ts\":" + String(temp) + "}";
+   // t:  temperatura
+   // h:  humedad
+   // rt: relay temperatura
+   // ts: temperatura seteada
+   // l:  cantidad de luz o lux o lumenes
+   Setpoint = temp;
+   String payload = "{\"t\" :" + String(t) + ", \"h\" : " + String(h) + ", \"rt\": " + (relayTempstate ? "true" : "false") + ", \"ts\":" + String(temp) + ", \"l\": " + String(ilum) + "}";
    // Send payload
    char attributes[108];
    payload.toCharArray( attributes, 108 );
    client.publish("home/nb/temp", attributes);
    Serial.println(attributes);
 }
+
+
+void readLight(){
+   Serial.println("Collecting light data.");
+   V = analogRead(LDRPin);         
+   //ilum = ((long)(1024-V)*A*10)/((long)B*Rc*V);  //usar si LDR entre GND y A0 
+   //ilum = ((long)V*A*10)/((long)B*Rc*(1024-V));    //usar si LDR entre A0 y Vcc (como en el esquema anterior)
+   ilum = map (V, 0,1023, 0, 100); 
+}
+
+
 
 
