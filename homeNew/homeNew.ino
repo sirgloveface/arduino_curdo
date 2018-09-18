@@ -88,6 +88,29 @@ byte moisture[8] = {
         B10001,
         B01110
 };
+// On Light icon
+byte lightOn[8] = {
+    B10101,
+    B00000,
+    B01110,
+    B10001,
+    B10001,
+    B10001,
+    B01010,
+    B01110
+};
+
+// Off light icon
+byte lightOff[8] = {
+    B00000,
+    B00000,
+    B01110,
+    B11111,
+    B11111,
+    B11111,
+    B01010,
+    B01110
+};
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived on topic: ");
@@ -154,11 +177,11 @@ void compute() {
     } 
     digitalWrite(tempRelay, relayTempstate);
       // Print PID Value
-    lcd.setCursor ( 0, 1 );
+    lcd.setCursor ( 0, 2 );
     lcd.print("P.I.D:");
-    lcd.setCursor( 8, 1);
+    lcd.setCursor( 8, 2);
     lcd.print(Output);
-    lcd.setCursor(15, 1); 
+    lcd.setCursor(15, 2); 
     lcd.print("%"); 
 }
 
@@ -194,6 +217,8 @@ void setup()
   lcd.createChar(1, measure);
   lcd.createChar(2, temperature);
   lcd.createChar(3, moisture);
+  lcd.createChar(4, lightOff);
+  lcd.createChar(5, lightOn);
   
   pinMode(tempRelay, OUTPUT);
  // pinMode(fanRelay, OUTPUT);
@@ -264,14 +289,12 @@ void sendData(){
    printScreen();
 }
 
-void readLight(){
-   Serial.println("Collecting light data.");
+void readLight() {
    V = analogRead(LDRPin);
    ilum = map (V, 0,1023, 0, 100); 
 }
 
-void printScreen(){
-  
+void printScreen() {
   // clear display, set cursor position to zero
   lcd.clear(); 
   // Backlight on
@@ -294,6 +317,15 @@ void printScreen(){
   lcd.print(h); 
   lcd.setCursor ( 18, 0 );
   lcd.write('%'); 
+
+  // Print lux
+  lcd.setCursor ( 0, 1 );
+  lcd.write(5);
+  lcd.setCursor ( 2, 1 );
+  lcd.print(ilum);
+  lcd.setCursor ( 5, 1 );
+  lcd.write('%');
+   
 }
 
 
